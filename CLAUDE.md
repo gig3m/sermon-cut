@@ -156,7 +156,9 @@ Every upload (sermon or short) writes an `upload.json` receipt
   the shorts word-transcribe. It was `medium` and hardcoded in argparse before;
   bumping the config alone did nothing.
 
-### GPU (added 2026-09-05, RTX 2080 SUPER / Turing, driver 580.173.02)
+### GPU (added 2026-09-05 on an RTX 2080 SUPER; the box has an RTX 5070 / Blackwell since 2026-09-20)
+Figures in this section are from the 2080 SUPER. Re-measured on the 5070 (2026-09-20, in this container):
+medium/`int8_float16` 42.5x realtime at 1602 MiB, large-v3/`int8_float16` 27.7x.
 `large-v3` on `int8_float16` — measured 9.9s for a 110s clip in the deployed
 container (11.1x realtime incl. model load, peak 2.3 GB VRAM) versus 57.8s for
 the old `medium`/CPU/`int8` path. 🚨 Three pieces must line up and **each fails
@@ -170,6 +172,19 @@ gives NVML/monitoring but cannot run CUDA. **Verify with
 print(ctranslate2.get_cuda_device_count())"` → `1` and `nvidia-smi` showing the
 process holding VRAM mid-run — never with a clean log or an HTTP 200.**
 Full detail: `docs/homelab-setup.md` §5.
+
+**The GPU is shared with Ollama (2026-11-09).** exodon's `gemma4:12b` sits at
+~9 GB of the 5070's 12 GB between requests, and whisper then dies with
+`CUDA failed with error out of memory` (the run row only says exit status 1).
+When `SERMON_CUT_OLLAMA_URL` is set (compose passes it through from `docker/.env`;
+Ollama listens only on the LAN IP), `_default_model_factory` calls
+`free_ollama_vram` before loading on CUDA: `keep_alive:0` for every model in
+`/api/ps`, then polls `/api/ps` up to 120s, because a model mid-request is
+acknowledged at once but stays resident until that request ends. Best-effort:
+Ollama down or still busy → whisper tries anyway. It fails silently if the var
+is missing, so verify with `docker exec sermon-cut printenv SERMON_CUT_OLLAMA_URL`.
+Side effects: it can cut short another client's in-flight request, and a client
+calling Ollama mid-transcription reloads its model (partly offloaded to CPU).
 
 ### Title policy (2026-09-06)
 The uploaded title comes from THREE sources, resolved in `title_vision.resolve_title`:

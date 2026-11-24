@@ -14,3 +14,4 @@ assets/*.png
 *.egg-info/
 experiments/
 auto.db
+docker/.env

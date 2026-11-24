@@ -17,6 +17,9 @@ The checkout must be on `main` and carry the
 - `client_secrets.json` — OAuth client
 - `assets/*.png` — your church's branded intro/outro/ink cards
 - `~/.claude/.credentials.json` + `~/.claude.json` — Claude Code, signed in
+- `docker/.env` (optional) — `SERMON_CUT_OLLAMA_URL=http://<ollama-host>:11434`
+  if Ollama shares the GPU: transcription unloads its models first, else whisper
+  can run out of GPU memory. Without it the unload step is skipped.
 
 yt-dlp does **not** need to be fresh on the host anymore — the image owns it and
 self-updates on every start.

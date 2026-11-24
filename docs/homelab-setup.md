@@ -51,7 +51,7 @@ in the meantime.
 (The weekly cron, the web dashboard, the full-download-trim clip workaround,
 and `shorts-select` are the follow-on plan.)
 
-## 5. GPU transcription (RTX 2080 SUPER)
+## 5. GPU transcription (RTX 5070)
 faster-whisper runs on the box's GPU. Three pieces have to line up, and each
 fails silently on its own:
 
@@ -92,3 +92,10 @@ sampled at 0.5s, `resolve_device()` -> `('cuda', 'int8_float16')`.
 `config.toml`'s `whisper_model` is `large-v3`: ~11x faster than the old CPU path
 on a materially better model, and 2.7 GB leaves headroom on the 8 GB card, which
 Plex shares for nvdec/nvenc. **Drop it back to `medium` on a CPU-only host.**
+
+### Sharing the GPU with Ollama
+The card is shared with Ollama (exodon's `gemma4:12b`, ~9 GB resident). With
+`SERMON_CUT_OLLAMA_URL` set in the compose environment, transcription unloads
+every Ollama model and waits (up to 120s) for `/api/ps` to empty before loading
+whisper on CUDA. Without it, transcribe fails with `CUDA failed with error out of
+memory`. Check: `docker exec sermon-cut printenv SERMON_CUT_OLLAMA_URL`.

@@ -99,14 +99,18 @@ def _ls_enumerate(channel_id, *, runner=subprocess.run):
 
 def _ls_fetch_thumbnail(video_id):
     """The video's primary public thumbnail bytes (maxres, hq fallback), or None."""
-    from urllib.request import urlopen, Request
-    from urllib.error import HTTPError, URLError
+    import http.client
+    import urllib.request
     for name in ("maxresdefault.jpg", "hqdefault.jpg"):
         try:
-            with urlopen(Request(f"https://i.ytimg.com/vi/{video_id}/{name}"),
-                         timeout=20) as r:
+            with urllib.request.urlopen(
+                    urllib.request.Request(f"https://i.ytimg.com/vi/{video_id}/{name}"),
+                    timeout=20) as r:
                 return r.read()
-        except (HTTPError, URLError):
+        except (OSError, http.client.HTTPException):
+            # HTTPError/URLError are OSErrors, and so is the bare TimeoutError a
+            # stalled read() raises (2026-11-15: it escaped and failed the run).
+            # IncompleteRead/BadStatusLine are HTTPExceptions, not OSErrors.
             continue
     return None
 

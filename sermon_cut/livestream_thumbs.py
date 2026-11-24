@@ -112,7 +112,7 @@ def thumbnail_stats(image_bytes: bytes) -> tuple[float, float]:
 
 
 def find_candidates(*, enumerate_streams, fetch_thumbnail, card_for,
-                    is_card=None) -> list[Candidate]:
+                    is_card=None, ids=None) -> list[Candidate]:
     """Sunday-service streams with a parseable date whose current thumbnail is
     NOT the card we would render. `enumerate_streams()` -> iterable of
     (video_id, title); `fetch_thumbnail(video_id)` -> bytes|None (None => needs a
@@ -120,8 +120,11 @@ def find_candidates(*, enumerate_streams, fetch_thumbnail, card_for,
     it could not be rendered (then we cannot judge, and it stays a candidate so
     the failure is reported)."""
     is_card = is_card or is_our_card
+    want = set(ids) if ids else None
     out = []
     for video_id, title in enumerate_streams():
+        if want is not None and video_id not in want:
+            continue  # filter before any network fetch or render
         if not is_sunday_service(title):
             continue
         label = livestream_label(title)
@@ -157,10 +160,7 @@ def run(*, enumerate_streams, fetch_thumbnail, render, set_thumbnail, out_dir,
 
     cands = find_candidates(enumerate_streams=enumerate_streams,
                             fetch_thumbnail=fetch_thumbnail, card_for=card_for,
-                            is_card=is_card)
-    if ids:
-        want = set(ids)
-        cands = [c for c in cands if c.video_id in want]
+                            is_card=is_card, ids=ids)
     if limit:
         cands = cands[:limit]
 

@@ -171,3 +171,71 @@ def test_run_idempotent_skips_existing_render(tmp_path):
         render=lambda l, p: calls.append(p) or Path(p),
         set_thumbnail=lambda v, p: None, out_dir=tmp_path, is_card=lambda t, p: False)
     assert calls == []   # render skipped because PNG existed
+
+
+def test_run_with_ids_only_touches_the_requested_streams(tmp_path):
+    """--ids must filter BEFORE any thumbnail fetch: on 2026-11-15 a read timeout
+    on an unrelated old stream's thumbnail killed that week's run."""
+    from pathlib import Path
+    from sermon_cut.livestream_thumbs import run
+    streams = [("v1", "Sunday Morning Class & Worship - July 5, 2026"),
+               ("v2", "Sunday Morning Class & Worship - June 28, 2026")]
+    fetched, rendered = [], []
+
+    def fetch(v):
+        fetched.append(v)
+        if v == "v2":
+            raise AssertionError("fetched a stream outside --ids")
+        return b"AUTO"
+
+    def render(label, out_path):
+        Path(out_path).write_text("png")
+        rendered.append(str(out_path))
+        return Path(out_path)
+
+    res = run(enumerate_streams=lambda: iter(streams), fetch_thumbnail=fetch,
+              render=render, set_thumbnail=lambda v, p: None, out_dir=tmp_path,
+              ids=["v1"], is_card=lambda t, p: False)
+    assert [r.video_id for r in res] == ["v1"]
+    assert fetched == ["v1"]
+    assert len(rendered) == 1
+
+
+def test_fetch_thumbnail_treats_a_read_timeout_as_no_thumbnail(monkeypatch):
+    """A socket timeout during read() raises a bare TimeoutError, not URLError."""
+    import urllib.request
+    from sermon_cut import cli
+
+    class Slow:
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+        def read(self):
+            raise TimeoutError("The read operation timed out")
+
+    calls = []
+    def fake_urlopen(req, timeout):
+        calls.append(req.full_url)
+        return Slow()
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    assert cli._ls_fetch_thumbnail("abc") is None
+    assert len(calls) == 2   # maxres, then hq fallback
+
+
+def test_fetch_thumbnail_treats_a_truncated_body_as_no_thumbnail(monkeypatch):
+    import http.client
+    import urllib.request
+    from sermon_cut import cli
+
+    class Cut:
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+        def read(self):
+            raise http.client.IncompleteRead(b"partial", 100)
+
+    monkeypatch.setattr(urllib.request, "urlopen", lambda req, timeout: Cut())
+    assert cli._ls_fetch_thumbnail("abc") is None

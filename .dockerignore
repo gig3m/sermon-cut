@@ -18,3 +18,5 @@ experiments/
 assets/_pre_coc_backup/
 docs/
 .pytest_cache/
+.env
+docker/.env

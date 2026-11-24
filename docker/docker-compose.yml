@@ -8,6 +8,9 @@ services:
     user: "1000:1000"
     environment:
       TZ: America/Chicago
+      # Whisper unloads Ollama's models before taking the shared GPU (else CUDA OOM).
+      # Set it in docker/.env (gitignored), e.g. SERMON_CUT_OLLAMA_URL=http://ollama-host:11434
+      SERMON_CUT_OLLAMA_URL: ${SERMON_CUT_OLLAMA_URL:-}
     ports:
       - "8890:8890"          # put a reverse proxy in front; the app has no auth
     volumes:

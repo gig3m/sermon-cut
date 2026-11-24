@@ -5,6 +5,9 @@ description = "Extract the sermon from a church livestream and upload it to YouT
 requires-python = ">=3.12"
 dependencies = [
     "faster-whisper>=1.0",
+    # av 19 dropped av.open(metadata_errors=...), which faster-whisper 1.2.1 passes:
+    # every transcribe fails "unexpected keyword argument metadata_errors" (2026-11-09).
+    "av<19",
     "google-api-python-client>=2.0",
     "google-auth-oauthlib>=1.2",
     "pillow>=10",

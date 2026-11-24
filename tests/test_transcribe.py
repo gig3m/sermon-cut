@@ -159,9 +159,138 @@ def test_default_model_factory_uses_resolved_device(monkeypatch):
             captured.update(name=name, device=device, compute_type=compute_type)
 
     monkeypatch.setattr(transcribe_mod, "resolve_device", lambda: ("cuda", "int8_float16"))
+    monkeypatch.delenv("SERMON_CUT_OLLAMA_URL", raising=False)  # stay offline
     monkeypatch.setitem(sys.modules, "faster_whisper",
                         types.SimpleNamespace(WhisperModel=FakeWhisperModel))
 
     transcribe_mod._default_model_factory("large-v3")
     assert captured == {"name": "large-v3", "device": "cuda",
                         "compute_type": "int8_float16"}
+
+
+# --- freeing Ollama's VRAM before whisper loads on the GPU -------------------
+
+class FakeOllama:
+    """Fake Ollama HTTP: unload removes a model from /api/ps, except a busy one,
+    which stays listed for `busy_polls` more /api/ps calls (an in-flight request)."""
+    def __init__(self, loaded, busy=None, fail=False, fail_unload=()):
+        self.loaded = list(loaded)
+        self.busy = dict(busy or {})
+        self.fail = fail
+        self.fail_unload = set(fail_unload)
+        self.expiring = set()
+        self.calls = []
+
+    def __call__(self, url, body=None):
+        self.calls.append((url, body))
+        if self.fail:
+            raise OSError("connection refused")
+        if url.endswith("/api/ps"):
+            for n in list(self.expiring):
+                if self.busy.get(n, 0) > 0:
+                    self.busy[n] -= 1
+                else:
+                    self.loaded.remove(n); self.expiring.discard(n)
+            return {"models": [{"name": n} for n in self.loaded]}
+        name = body["model"]
+        if name in self.fail_unload:
+            raise OSError("HTTP 400")
+        self.expiring.add(name)
+        return {"done_reason": "unload"}
+
+
+def test_free_ollama_vram_unloads_every_loaded_model():
+    http = FakeOllama(["gemma4:12b", "qwen3-coder:30b"])
+    unloaded = transcribe_mod.free_ollama_vram("http://ollama:11434/", http=http,
+                                               sleep=lambda s: None)
+    assert unloaded == ["gemma4:12b", "qwen3-coder:30b"]
+    assert http.calls[0] == ("http://ollama:11434/api/ps", None)
+    assert http.calls[1:3] == [
+        ("http://ollama:11434/api/generate", {"model": "gemma4:12b", "keep_alive": 0}),
+        ("http://ollama:11434/api/generate", {"model": "qwen3-coder:30b", "keep_alive": 0}),
+    ]
+    assert http.loaded == []
+
+
+def test_free_ollama_vram_noop_when_nothing_loaded():
+    http = FakeOllama([])
+    assert transcribe_mod.free_ollama_vram("http://ollama:11434", http=http) == []
+    assert len(http.calls) == 1
+
+
+def test_free_ollama_vram_never_raises_when_ollama_is_down():
+    http = FakeOllama([], fail=True)
+    assert transcribe_mod.free_ollama_vram("http://ollama:11434", http=http) == []
+
+
+def test_free_ollama_vram_waits_for_a_busy_model_to_leave():
+    # A busy runner is acknowledged at once but stays resident until its request ends.
+    http = FakeOllama(["gemma4:12b"], busy={"gemma4:12b": 3})
+    slept = []
+    transcribe_mod.free_ollama_vram("http://ollama:11434", http=http, sleep=slept.append,
+                                    poll_seconds=2)
+    assert http.loaded == []
+    assert slept == [2, 2, 2]
+
+
+class FakeClock:
+    def __init__(self):
+        self.t = 0.0
+    def __call__(self):
+        return self.t
+    def sleep(self, s):
+        self.t += s
+
+
+def test_free_ollama_vram_gives_up_at_the_deadline():
+    http = FakeOllama(["gemma4:12b"], busy={"gemma4:12b": 1000})
+    clock = FakeClock()
+    unloaded = transcribe_mod.free_ollama_vram("http://ollama:11434", http=http,
+                                               sleep=clock.sleep, clock=clock,
+                                               wait_seconds=10, poll_seconds=2)
+    assert unloaded == ["gemma4:12b"]
+    assert clock.t == 10
+
+
+def test_free_ollama_vram_deadline_counts_slow_polls():
+    # Each /api/ps takes 9s: the 120s budget must be wall-clock, not just sleeps.
+    clock = FakeClock()
+    inner = FakeOllama(["gemma4:12b"], busy={"gemma4:12b": 1000})
+    def slow_http(url, body=None):
+        if url.endswith("/api/ps"):
+            clock.t += 9
+        return inner(url, body)
+    transcribe_mod.free_ollama_vram("http://ollama:11434", http=slow_http,
+                                    sleep=clock.sleep, clock=clock,
+                                    wait_seconds=120, poll_seconds=2)
+    # initial /api/ps (9) + 120s budget + at most one poll in flight at the deadline (9)
+    assert clock.t <= 9 + 120 + 9
+
+
+def test_free_ollama_vram_one_failed_unload_does_not_stop_the_rest():
+    http = FakeOllama(["embed:latest", "gemma4:12b"], fail_unload={"embed:latest"})
+    unloaded = transcribe_mod.free_ollama_vram("http://ollama:11434", http=http,
+                                               sleep=lambda s: None)
+    assert unloaded == ["gemma4:12b"]
+    assert http.loaded == ["embed:latest"]
+
+
+def test_factory_frees_ollama_only_on_cuda_when_url_set(monkeypatch):
+    freed = []
+    monkeypatch.setattr(transcribe_mod, "free_ollama_vram", lambda url: freed.append(url) or [])
+    fake_fw = types.ModuleType("faster_whisper")
+    fake_fw.WhisperModel = lambda name, device, compute_type: (name, device)
+    monkeypatch.setitem(sys.modules, "faster_whisper", fake_fw)
+
+    monkeypatch.setenv("SERMON_CUT_OLLAMA_URL", "http://ollama:11434")
+    monkeypatch.setenv("SERMON_CUT_WHISPER_DEVICE", "cpu")
+    transcribe_mod._default_model_factory("medium")
+    assert freed == []
+
+    monkeypatch.setenv("SERMON_CUT_WHISPER_DEVICE", "cuda")
+    transcribe_mod._default_model_factory("medium")
+    assert freed == ["http://ollama:11434"]
+
+    monkeypatch.delenv("SERMON_CUT_OLLAMA_URL")
+    transcribe_mod._default_model_factory("medium")
+    assert freed == ["http://ollama:11434"]

@@ -1,6 +1,7 @@
 from __future__ import annotations
 import json
 import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -45,9 +46,79 @@ def resolve_device(cuda_count=None) -> tuple[str, str]:
     return device, compute
 
 
+def _http_json(url: str, body: dict | None = None) -> dict:
+    import urllib.request
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(url, data=data,
+                                 headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        return json.loads(resp.read() or b"{}")
+
+
+def _loaded_models(http, base: str) -> list[str]:
+    models = http(f"{base}/api/ps").get("models") or []
+    return [n for n in (m.get("name") or m.get("model") for m in models) if n]
+
+
+def free_ollama_vram(base_url: str, *, http=None, sleep=None, clock=None,
+                     wait_seconds: float = 120.0, poll_seconds: float = 2.0) -> list[str]:
+    """Unload every model Ollama holds so whisper has the GPU, and wait for it.
+
+    The box's 12GB card is shared with Ollama, whose models (exodon's gemma4:12b
+    sits at ~9GB) stay resident between requests; whisper large-v3 then fails
+    with "CUDA failed with error out of memory".
+
+    keep_alive=0 is acknowledged at once, but it only marks the runner to expire:
+    an idle model is gone immediately, a busy one stays resident until its
+    in-flight request finishes. So poll /api/ps until the models are gone, up to
+    `wait_seconds`. Best-effort throughout: if Ollama is down, slow or still busy
+    at the deadline, whisper just tries anyway. Unloading can cut short another
+    client's in-flight request, and a client that calls Ollama mid-transcription
+    reloads its model (Ollama then offloads part of it to CPU).
+    """
+    import time
+    http = http or _http_json
+    sleep = sleep or time.sleep
+    clock = clock or time.monotonic
+    base = base_url.rstrip("/")
+    try:
+        loaded = _loaded_models(http, base)
+    except Exception as e:  # never let this block a transcription
+        print(f"sermon-cut: could not reach Ollama at {base}: {e}", file=sys.stderr)
+        return []
+    unloaded = []
+    for name in loaded:
+        try:
+            http(f"{base}/api/generate", {"model": name, "keep_alive": 0})
+            unloaded.append(name)
+        except Exception as e:
+            print(f"sermon-cut: could not unload Ollama model {name}: {e}", file=sys.stderr)
+    start = clock()
+    while unloaded:
+        try:
+            still = [n for n in _loaded_models(http, base) if n in unloaded]
+        except Exception as e:
+            print(f"sermon-cut: lost Ollama while waiting for unload: {e}", file=sys.stderr)
+            break
+        if not still:
+            break
+        waited = clock() - start  # wall clock: slow /api/ps calls count too
+        if waited >= wait_seconds:
+            print(f"sermon-cut: Ollama still holds {still} after {waited:.0f}s; "
+                  "transcribing anyway", file=sys.stderr)
+            break
+        sleep(min(poll_seconds, wait_seconds - waited))
+    if unloaded:
+        print(f"sermon-cut: unloaded Ollama models {unloaded}", file=sys.stderr)
+    return unloaded
+
+
 def _default_model_factory(model_name: str):
     from faster_whisper import WhisperModel
     device, compute_type = resolve_device()
+    ollama_url = os.environ.get("SERMON_CUT_OLLAMA_URL")
+    if device == "cuda" and ollama_url:
+        free_ollama_vram(ollama_url)
     return WhisperModel(model_name, device=device, compute_type=compute_type)
 
 
