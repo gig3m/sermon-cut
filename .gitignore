@@ -1,0 +1,16 @@
+/runs
+*.mp4
+*.m4a
+.venv/
+__pycache__/
+.DS_Store
+config.toml
+client_secrets.json
+token.json
+*.srt
+*.json.info
+source.info.json
+assets/*.png
+*.egg-info/
+experiments/
+auto.db

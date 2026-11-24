@@ -1,0 +1,20 @@
+# Keep the build context small and never bake secrets/artifacts into the image.
+# config.toml, token.json, client_secrets.json and assets/ are mounted at runtime
+# (see docker/docker-compose.yml), NOT baked in. .claude/skills/ IS shipped —
+# claude -p needs /sermon-auto — so it is deliberately not ignored.
+.venv/
+runs/
+*.mp4
+*.m4a
+*.db
+token.json*
+client_secrets.json
+config.toml
+.git/
+__pycache__/
+*.pyc
+*.pyo
+experiments/
+assets/_pre_coc_backup/
+docs/
+.pytest_cache/

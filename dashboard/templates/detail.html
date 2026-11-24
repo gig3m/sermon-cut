@@ -1,0 +1,20 @@
+{% extends "base.html" %}{% block body %}
+<h2>{{ run.title_override or run.video_id }}</h2>
+<p><span class="badge {{ run.status }}">{{ run.status }}{% if run.stage %} · {{ run.stage }}{% endif %}</span></p>
+{% if run.confidence_note %}<p><em>{{ run.confidence_note }}</em></p>{% endif %}
+{% if run.error %}<p style="color:#a00">Error: {{ run.error }}</p>
+  <form method="post" action="/run/{{ run.video_id }}/retry"><button>Retry</button></form>{% endif %}
+{% if run.sermon_url %}<p>Sermon (Unlisted): <a href="{{ run.sermon_url }}">{{ run.sermon_url }}</a></p>{% endif %}
+{% if run.shorts_urls %}<p>Shorts:</p><ul>{% for u in run.shorts_urls %}<li><a href="{{ u }}">{{ u }}</a></li>{% endfor %}</ul>{% endif %}
+{% if run.status == "discovered" %}
+<h3>Process</h3>
+<form method="post" action="/run/{{ run.video_id }}/process">
+ <label>Speaker <input name="speaker" value="{{ run.speaker or '' }}"></label>
+ <label>Title (blank = read the slide) <input name="title" value=""></label>
+ <label><input type="checkbox" name="skip_thumbnail"> Skip thumbnail</label>
+ <label><input type="checkbox" name="skip_shorts"> Skip Shorts</label>
+ <label><input type="checkbox" name="force"> Force re-run</label>
+ <button>Process</button>
+</form>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,49 @@
+# Copy to config.toml and fill in. config.toml is gitignored.
+church_name = "Your Church Name"
+youtube_channel_id = "UCxxxxxxxxxxxxxxxxxxxxxx"  # your channel id
+default_speaker = "Pastor Name"                  # assumed preacher; override per-run with --speaker
+canva_template_id = "TPLxxxxxxxxx"               # brand template for the intro card
+intro_seconds = 5
+outro_seconds = 5
+front_padding_seconds = 1  # lead-in before the sermon start (keep tight so a
+                           # pre-sermon Scripture reading isn't pulled in)
+back_padding_seconds = 4   # trailing margin after the sermon end
+dissolve_seconds = 0.8     # cross-dissolve between card and sermon
+fade_seconds = 0.6         # fade up/down from/to black at start/end
+whisper_model = "large-v3"   # GPU path; drop to "medium" on a CPU-only host
+description_footer = """
+—
+Join us Sundays at 10:00am.
+Website: https://example.church
+"""
+
+# Autopilot email notifications (optional; only needed for `sermon_cut auto …`).
+# Sent via Resend — RESEND_API_KEY must be set in the environment (never in this
+# file); see docs/homelab-setup.md.
+notify_to = "you@example.com"          # where "needs approval" / "ready" emails go
+notify_from = "autopilot@example.church" # Resend-verified sending address
+
+# Shorts generation parameters (optional; all have defaults)
+[shorts]
+caption_font_size = 84         # font size for captions; increase for more legibility
+cap_y = 1400                   # vertical center of caption text on screen
+amber = [255, 201, 60]         # RGB color for caption text
+deadzone = 95                  # vertical margin in pixels where captions are suppressed
+maxjump = 200                  # max vertical pixels per frame for caption movement
+max_vel = 5.0                  # max caption velocity (pixels/frame)
+pre_alpha = 0.20               # alpha for caption 1 frame before appearance
+post_alpha = 0.08              # alpha for caption 1 frame after disappearance
+min_fg = 3060                  # min foreground area (pixels) to keep a caption
+crop_w = 430                   # shorts crop width (tuned to fixed camera setup)
+crop_h = 764                   # shorts crop height (tuned to fixed camera setup)
+crop_y = 290                   # shorts crop y-offset (tuned to fixed camera setup)
+fade_up = 0.4                  # fade-up duration at shorts start (seconds)
+dissolve = 0.6                 # dissolve duration between clips (seconds)
+outro_hold = 2.4               # outro card hold duration (seconds)
+fade_out = 0.5                 # fade-out duration at shorts end (seconds)
+target_min = 20                # target min shorts length (seconds)
+roi_top = 400                  # tracking ROI top (source px y) — track head+torso,
+roi_bottom = 680               #   not the whole body, so arm gestures don't drag the frame
+target_max = 60                # target max shorts length (seconds); >this = WARN_LONG
+hard_min = 15                  # hard minimum shorts length (seconds)
+hard_max = 180                 # hard maximum shorts length (seconds)

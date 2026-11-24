@@ -1,0 +1,38 @@
+services:
+  sermon-cut:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: sermon-cut:latest
+    container_name: sermon-cut
+    user: "1000:1000"
+    environment:
+      TZ: America/Chicago
+    ports:
+      - "8890:8890"          # put a reverse proxy in front; the app has no auth
+    volumes:
+      # Claude Code credentials (read-write: the OAuth token refreshes) + CLI config file
+      - ${HOME}/.claude:/home/appuser/.claude
+      - ${HOME}/.claude.json:/home/appuser/.claude.json
+      # Gitignored runtime config/auth/assets, bound off the host checkout
+      - ../config.toml:/app/config.toml:ro
+      - ../token.json:/app/token.json
+      - ../client_secrets.json:/app/client_secrets.json:ro
+      - ../assets:/app/assets:ro
+      # Mutable state — persist across redeploys
+      - ../runs:/app/runs
+      - ../auto.db:/app/auto.db
+      - whisper-cache:/home/appuser/.cache
+    # An NVIDIA GPU for faster-whisper. `compute` is required to run
+    # CUDA at all; `utility` alone gives NVML/monitoring only (the glances trap).
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu, compute, utility]
+    restart: unless-stopped
+
+volumes:
+  whisper-cache:

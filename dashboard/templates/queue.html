@@ -1,0 +1,39 @@
+{% extends "base.html" %}{% block body %}
+<form class="inline" method="post" action="/rescan"><button>Rescan now</button></form>
+<form class="inline" method="post" action="/ignore-discovered"><button>Dismiss all discovered</button></form>
+<table><tr><th>Date/Title</th><th>Status</th><th></th></tr>
+{% for r in runs %}
+<tr>
+  <td>{{ r.title_override or r.video_id }}</td>
+  <td><span class="badge {{ r.status }}">{{ r.status }}{% if r.stage %} · {{ r.stage }}{% endif %}</span></td>
+  <td>
+    <a href="/run/{{ r.video_id }}">open</a>
+    {% if r.status == "discovered" %}
+    <form class="inline" method="post" action="/run/{{ r.video_id }}/ignore"><button>Dismiss</button></form>
+    {% endif %}
+  </td>
+</tr>
+{% endfor %}
+</table>
+
+{% if ignored %}
+<p class="muted">
+  {{ ignored|length }} ignored —
+  {% if show_ignored %}<a href="/">hide</a>{% else %}<a href="/?show=ignored">show</a>{% endif %}
+</p>
+{% if show_ignored %}
+<table><tr><th>Date/Title</th><th>Status</th><th></th></tr>
+{% for r in ignored %}
+<tr>
+  <td>{{ r.title_override or r.video_id }}</td>
+  <td><span class="badge {{ r.status }}">{{ r.status }}</span></td>
+  <td>
+    <a href="/run/{{ r.video_id }}">open</a>
+    <form class="inline" method="post" action="/run/{{ r.video_id }}/restore"><button>Restore</button></form>
+  </td>
+</tr>
+{% endfor %}
+</table>
+{% endif %}
+{% endif %}
+{% endblock %}

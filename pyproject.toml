@@ -1,0 +1,30 @@
+[project]
+name = "sermon-cut"
+version = "0.1.0"
+description = "Extract the sermon from a church livestream and upload it to YouTube."
+requires-python = ">=3.12"
+dependencies = [
+    "faster-whisper>=1.0",
+    "google-api-python-client>=2.0",
+    "google-auth-oauthlib>=1.2",
+    "pillow>=10",
+    "opencv-python-headless",
+    "numpy",
+]
+
+[project.optional-dependencies]
+dashboard = ["fastapi", "uvicorn[standard]", "jinja2", "python-multipart"]
+test = ["pytest", "httpx"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["sermon_cut*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = [
+    "ignore:Using `httpx` with `starlette.testclient`.*:UserWarning",
+]
